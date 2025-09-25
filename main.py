@@ -9,7 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiohttp import web
 
-from  config import settings
+from config import settings
 from  db import init_db, SessionLocal
 from  scheduler import setup_scheduler
 from base import *  # или конкретные функции из base
