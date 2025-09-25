@@ -1,75 +1,44 @@
+import os
 import asyncio
-import logging
-import contextlib
+import threading
+from http.server import SimpleHTTPRequestHandler
+from socketserver import TCPServer
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.types import BotCommand
-from aiogram.fsm.storage.memory import MemoryStorage
-from sqlalchemy.ext.asyncio import AsyncSession
-from aiohttp import web
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart
+from aiogram.types import Message
 
-from config import settings
-from db import init_db, SessionLocal
-# если модуля handlers нет — не импортируйте его
-# from handlers import base_handlers  <-- удалить, если файла нет
-from  scheduler import setup_scheduler
-from base import *  # или конкретные функции из base
-from  handlers import reminders as reminders_handlers
-from  webhook import build_app
+from db import init_db  # абсолютные импорты
 
-logging.basicConfig(level=logging.INFO)
+# Небольшой HTTP-сервер, чтобы Render видел "живой" порт ($PORT)
+def start_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
+        httpd.serve_forever()
 
-async def session_middleware(handler, event, data):
-    async with SessionLocal() as session:  # type: AsyncSession
-        data["session"] = session
-        try:
-            result = await handler(event, data)
-            await session.commit()
-            return result
-        except Exception:
-            await session.rollback()
-            raise
+async def run_bot():
+    load_dotenv()
+    token = os.getenv("TELEGRAM_TOKEN")
+    if not token:
+        raise RuntimeError("TELEGRAM_TOKEN is not set")
 
-async def set_commands(bot: Bot):
-    await bot.set_my_commands([
-        BotCommand(command="start", description="начать"),
-        BotCommand(command="help", description="помощь"),
-        BotCommand(command="list", description="мои напоминания"),
-        BotCommand(command="remind", description="создать напоминание"),
-    ])
+    init_db()
 
-async def _bootstrap():
-    await init_db()
-    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=None))
-    dp = Dispatcher(storage=MemoryStorage())
-    dp.update.outer_middleware.register(session_middleware)
-    dp.include_router(base_handlers.router)
-    dp.include_router(reminders_handlers.router)
-    await set_commands(bot)
-    scheduler = setup_scheduler(bot, SessionLocal)
-    return bot, dp, scheduler
+    bot = Bot(token)
+    dp = Dispatcher()
 
-async def main():
-    bot, dp, scheduler = await _bootstrap()
+    @dp.message(CommandStart())
+    async def on_start(m: Message):
+        await m.answer("Я запущен на Render ✅")
 
-    try:
-        if settings.webhook_url:
-            logging.info(f"Starting webhook server on 0.0.0.0:{settings.port}")
-            app = build_app(bot, dp)
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, "0.0.0.0", settings.port)
-            await site.start()
-            while True:
-                await asyncio.sleep(3600)
-        else:
-            logging.info("Starting in long-polling mode")
-            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    finally:
-        with contextlib.suppress(Exception):
-            scheduler.shutdown()
-        await bot.session.close()
+    @dp.message(F.text)
+    async def echo(m: Message):
+        await m.answer(m.text)
+
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # поднимем HTTP на фоне, чтобы web-сервис на Render не ругался
+    threading.Thread(target=start_http_server, daemon=True).start()
+    asyncio.run(run_bot())
