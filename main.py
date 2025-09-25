@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aiohttp import web
 
 from config import settings
-from  db import init_db, SessionLocal
+from db import init_db, SessionLocal
+# если модуля handlers нет — не импортируйте его
+# from handlers import base_handlers  <-- удалить, если файла нет
 from  scheduler import setup_scheduler
 from base import *  # или конкретные функции из base
 from  handlers import reminders as reminders_handlers
