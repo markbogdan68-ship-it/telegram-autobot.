@@ -12,7 +12,7 @@ from aiohttp import web
 from  config import settings
 from  db import init_db, SessionLocal
 from  scheduler import setup_scheduler
-from  handlers import base as base_handlers
+from base import *  # или конкретные функции из base
 from  handlers import reminders as reminders_handlers
 from  webhook import build_app
 
