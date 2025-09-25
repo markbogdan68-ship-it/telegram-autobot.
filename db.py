@@ -1,14 +1,17 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
-from  config import settings
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-engine = create_async_engine(settings.database_url, echo=False, future=True)
-SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+DATABASE_URL = "sqlite:///./db.sqlite3"
 
-class Base(DeclarativeBase):
-    pass
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
 
-async def init_db():
-    import models  # noqa
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+import models  # noqa  <-- вот эта строка и нужна
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
