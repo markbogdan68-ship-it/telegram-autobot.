@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from ..models import User
+from  models import User
 
 router = Router()
 
