@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from .models import Reminder
-from .config import settings
+from  models import Reminder
+from  config import settings
 
 def setup_scheduler(bot: Bot, session_factory):
     scheduler = AsyncIOScheduler(timezone=ZoneInfo(settings.tz))
