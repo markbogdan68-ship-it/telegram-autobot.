@@ -60,3 +60,4 @@ async def list_reminders(m: Message, session: AsyncSession):
         local = r.due_at.astimezone(ZoneInfo(settings.tz))
         lines.append(f"• {local.strftime('%Y-%m-%d %H:%M %Z')} — {r.text} (#{r.id})")
     await m.answer("твои напоминания:\n" + "\n".join(lines))
+aiosqlite
