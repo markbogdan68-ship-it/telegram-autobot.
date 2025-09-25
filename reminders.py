@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import re
 
-from ..models import Reminder
-from ..config import settings
+from  models import Reminder
+from  config import settings
 
 router = Router()
 
