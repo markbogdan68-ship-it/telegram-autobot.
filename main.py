@@ -1,8 +1,10 @@
-# main.py (добавления сверху файла)
 import os
+import asyncio
+import threading
 import time
 import logging
-# ... остальное, что уже было импортировано
+from http.server import SimpleHTTPRequestHandler
+from socketserver import TCPServer
 
 # --- ЛОГИРОВАНИЕ ---
 LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -19,5 +21,4 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 log = logging.getLogger("bot")
-
 START_TS = time.time()
