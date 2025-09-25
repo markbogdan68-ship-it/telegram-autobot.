@@ -1,3 +1,4 @@
+from handlers import router
 import os
 import asyncio
 import threading
