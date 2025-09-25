@@ -9,12 +9,12 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiohttp import web
 
-from .config import settings
-from .db import init_db, SessionLocal
-from .scheduler import setup_scheduler
-from .handlers import base as base_handlers
-from .handlers import reminders as reminders_handlers
-from .webhook import build_app
+from  config import settings
+from  db import init_db, SessionLocal
+from  scheduler import setup_scheduler
+from  handlers import base as base_handlers
+from  handlers import reminders as reminders_handlers
+from  webhook import build_app
 
 logging.basicConfig(level=logging.INFO)
 
