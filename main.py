@@ -28,7 +28,7 @@ async def run_bot():
 
     bot = Bot(token)
     dp = Dispatcher()
-
+dp.include_router(router)
     @dp.message(CommandStart())
     async def on_start(m: Message):
         await m.answer("Я запущен на Render ✅")
