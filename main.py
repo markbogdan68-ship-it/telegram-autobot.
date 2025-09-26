@@ -1,4 +1,15 @@
 import os
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from db import init_db, add_user, count_users, get_sample_users, all_user_ids
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
+def is_admin(user_id: int) -> bool:
+    return user_id == ADMIN_ID
+    import os
 import asyncio
 import threading
 import time
@@ -161,30 +172,36 @@ def is_admin(user_id: int) -> bool:
 @router.message(Command("users"))
 async def cmd_users(m: Message):
     if not is_admin(m.from_user.id):
-        await m.answer("Команда только для админа.")
-        return
-    await m.answer(f"Пользователей (в этом процессе): {len(USERS)}")
+        return await m.answer("Команда только для админа.")
 
-@router.message(Command("broadcast"))
+    total = count_users()
+    if total == 0:
+        return await m.answer("Пока нет ни одного пользователя.")
+
+    sample = get_sample_users(10)
+    preview = ", ".join(map(str, sample))
+    more = f"\n…и ещё {total-10}" if total > 10 else ""
+    await m.answer(f"Пользователей: {total}\n{preview}{more}")
+@router.message(Command("broadcast")))
 async def cmd_broadcast(m: Message):
     if not is_admin(m.from_user.id):
-        await m.answer("Команда только для админа.")
-        return
-    text = (m.text or "").split(maxsplit=1)
-    if len(text) < 2:
-        await m.answer("Использование: /broadcast текст")
-        return
-    payload = text[1]
-    ok, fail = 0, 0
-    for uid in list(USERS):
-        try:
-            await m.bot.send_message(uid, payload)
-            ok += 1
-        except Exception as e:
-            log.warning("broadcast to %s failed: %s", uid, e)
-            fail += 1
-    await m.answer(f"Разослано: {ok}, ошибок: {fail}")
+        return await m.answer("Команда только для админа.")
 
+    parts = m.text.split(" ", 1)
+    if len(parts) < 2 or not parts[1].strip():
+        return await m.answer("Использование: /broadcast ТЕКСТ_СООБЩЕНИЯ")
+
+    text = parts[1].strip()
+    ok, fail = 0, 0
+
+    for uid in all_user_ids():
+        try:
+            await m.bot.send_message(uid, text)
+            ok += 1
+        except Exception:
+            fail += 1
+
+    await m.answer(f"Готово. Отправлено: {ok}. Ошибок: {fail}.")
 # ---------- ОБРАТНАЯ СВЯЗЬ ----------
 @router.message(Command("feedback"))
 async def cmd_feedback(m: Message):
@@ -221,6 +238,11 @@ def start_http_server():
 
 # ---------- ЗАПУСК ----------
 async def run_bot():
+    # ... у тебя тут load_dotenv(), token и т.д.
+    init_db()  # <-- ДО dp.start_polling(...)
+    # dp = Dispatcher(), include_router(...), и т.п.
+    await dp.start_polling(bot)
+    async def run_bot():
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_TOKEN is not set")
