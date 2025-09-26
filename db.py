@@ -1,51 +1,66 @@
-# db.py
-from datetime import datetime
-import os
+from sqlalchemy import create_engine, Column, Integer, String, Boolean
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-from sqlalchemy import create_engine, Column, Integer, BigInteger, DateTime, select
-from sqlalchemy.orm import declarative_base, Session
+# База данных SQLite (лежит в корне проекта)
+DATABASE_URL = "sqlite:///./db.sqlite3"
 
-# По умолчанию SQLite-файл рядом с кодом (переживает перезапуск, но теряется при новом деплое).
-# Позже можем подключить внешнюю БД (например, Neon/Postgres), тогда положим URL в DATABASE_URL.
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///bot.db")
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # нужно для SQLite
+)
 
-engine = create_engine(DB_URL, echo=False, future=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 Base = declarative_base()
 
-
+# -------------------------
+# Модель пользователя
+# -------------------------
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, autoincrement=True)        # внутренний id
-    tg_id = Column(BigInteger, unique=True, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
+    id = Column(Integer, primary_key=True, index=True)      # ID в базе
+    tg_id = Column(Integer, unique=True, index=True)        # Telegram ID
+    username = Column(String, nullable=True)                # @username
+    is_admin = Column(Boolean, default=False)               # админ или нет
 
-def init_db() -> None:
-    """Создать таблицы, если их ещё нет."""
-    Base.metadata.create_all(engine)
+# -------------------------
+# Инициализация базы
+# -------------------------
+def init_db():
+    Base.metadata.create_all(bind=engine)
 
+# -------------------------
+# Добавление пользователя
+# -------------------------
+def add_user(tg_id: int, username: str = None) -> None:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter_by(tg_id=tg_id).first()
+        if not user:
+            user = User(tg_id=tg_id, username=username)
+            db.add(user)
+            db.commit()
+    finally:
+        db.close()
 
-def add_user(tg_id: int) -> None:
-    """Сохранить пользователя, если его ещё нет."""
-    with Session(engine) as s:
-        exists = s.scalar(select(User).where(User.tg_id == tg_id))
-        if not exists:
-            s.add(User(tg_id=tg_id))
-            s.commit()
+# -------------------------
+# Проверка админа
+# -------------------------
+def is_admin(tg_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter_by(tg_id=tg_id).first()
+        return bool(user and user.is_admin)
+    finally:
+        db.close()
 
-
-def count_users() -> int:
-    with Session(engine) as s:
-        return s.query(User).count()
-
-
-def get_sample_users(limit: int = 10) -> list[int]:
-    with Session(engine) as s:
-        return s.execute(
-            select(User.tg_id).order_by(User.created_at.desc()).limit(limit)
-        ).scalars().all()
-
-
-def all_user_ids() -> list[int]:
-    with Session(engine) as s:
-        return s.execute(select(User.tg_id)).scalars().all()
+# -------------------------
+# Список пользователей
+# -------------------------
+def get_all_users():
+    db = SessionLocal()
+    try:
+        return db.query(User).all()
+    finally:
+        db.close()
