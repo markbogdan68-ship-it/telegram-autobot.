@@ -1,7 +1,3 @@
-# =========================================================
-# main.py  — версия с INLINE_FEATURES_V1 (меню + счётчик)
-# =========================================================
-
 import os
 import asyncio
 import threading
@@ -11,14 +7,9 @@ from http.server import SimpleHTTPRequestHandler
 from socketserver import TCPServer
 
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-try:
-    from dotenv import load_dotenv
-except Exception:
-    load_dotenv = lambda: None
 
 # ---------- ЛОГИ ----------
 LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -29,28 +20,43 @@ _level = {
     "INFO": logging.INFO,
     "DEBUG": logging.DEBUG,
 }.get(LEVEL, logging.INFO)
-logging.basicConfig(level=_level, format="%(asctime)s | %(levelname)s | %(message)s")
+
+logging.basicConfig(
+    level=_level,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 log = logging.getLogger("bot")
 START_TS = time.time()
 
-# ---------- HTTP для Render ----------
-def start_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    httpd = TCPServer(("", port), SimpleHTTPRequestHandler)
-    log.info("HTTP server on %s", port)
-    httpd.serve_forever()
-
-# ---------- Router ----------
+# ---------- ГЛОБАЛЬНЫЕ ДАННЫЕ ----------
 router = Router()
+USERS: set[int] = set()  # собираем user_id тех, кто написал /start (в памяти процесса)
 
-# ---------- БАЗОВЫЕ КОМАНДЫ ----------
+# ---------- КНОПКИ ----------
+def main_menu_kb() -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="ℹ️ Информация", callback_data="menu:info")
+    kb.button(text="✉️ Связаться", callback_data="menu:contact")
+    kb.button(text="🧮 Счётчик", callback_data="menu:counter")
+    kb.adjust(2, 1)
+    return kb
+
+def counter_kb(value: int) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="➖", callback_data=f"cnt:-1:{value}")
+    kb.button(text="➕", callback_data=f"cnt:+1:{value}")
+    kb.button(text="🔄 Сброс", callback_data="cnt:reset:0")
+    kb.button(text="⬅️ Назад", callback_data="cnt:back:0")
+    kb.adjust(2, 2)
+    return kb
+
+# ---------- КОМАНДЫ ----------
 @router.message(CommandStart())
 async def cmd_start(m: Message):
-    uptime = int(time.time() - START_TS)
+    USERS.add(m.from_user.id)
     await m.answer(
-        "Я запущен на Render ✅\n"
-        "Доступные команды: /help, /ping, /menu, /counter\n"
-        f"Uptime: {uptime}s"
+        "Я запущен на Render ✅\nДоступные команды: /help, /ping, /menu, /feedback",
+        reply_markup=main_menu_kb().as_markup()
     )
 
 @router.message(Command("help"))
@@ -58,38 +64,50 @@ async def cmd_help(m: Message):
     await m.answer(
         "Команды:\n"
         "• /ping — проверка\n"
-        "• /menu — пример меню\n"
-        "• /counter — счётчик с кнопками\n"
-        "• /help — эта справка"
+        "• /menu — меню с кнопками\n"
+        "• /feedback <текст> — написать админу\n"
+        "• /broadcast <текст> — рассылка (только админ)\n"
+        "• /users — сколько пользователей (только админ)"
     )
 
 @router.message(Command("ping"))
 async def cmd_ping(m: Message):
     await m.answer("pong 🏓")
 
-# =========================================================
-# INLINE_FEATURES_V1 — МЕНЮ С КНОПКАМИ
-# =========================================================
-def main_menu_kb() -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="ℹ️ Информация", callback_data="menu:info")
-    kb.button(text="✉️ Связаться", url="https://t.me/your_username")  # <-- замени!
-    kb.button(text="⬅️ Назад", callback_data="menu:back")
-    kb.adjust(2, 1)
-    return kb
-
 @router.message(Command("menu"))
-async def show_menu(m: Message):
+async def cmd_menu(m: Message):
     await m.answer("Главное меню:", reply_markup=main_menu_kb().as_markup())
 
+# ---------- CALLBACKS МЕНЮ ----------
 @router.callback_query(F.data == "menu:info")
 async def menu_info(cq: CallbackQuery):
     await cq.answer()
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ В меню", callback_data="menu:back")
+    kb.adjust(1)
+    up = int(time.time() - START_TS)
     await cq.message.edit_text(
-        "Это пример информационного экрана.\nЗдесь может быть любой текст.",
+        f"Информация:\n• Аптайм процесса: ~{up} сек.",
         reply_markup=kb.as_markup()
+    )
+
+@router.callback_query(F.data == "menu:contact")
+async def menu_contact(cq: CallbackQuery):
+    await cq.answer("Пиши командой /feedback <твой текст>")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⬅️ В меню", callback_data="menu:back")
+    kb.adjust(1)
+    await cq.message.edit_text(
+        "Напиши админу: /feedback Привет! Нужна помощь...",
+        reply_markup=kb.as_markup()
+    )
+
+@router.callback_query(F.data == "menu:counter")
+async def menu_counter(cq: CallbackQuery):
+    await cq.answer()
+    await cq.message.edit_text(
+        "Счётчик: 0",
+        reply_markup=counter_kb(0).as_markup()
     )
 
 @router.callback_query(F.data == "menu:back")
@@ -100,23 +118,7 @@ async def menu_back(cq: CallbackQuery):
         reply_markup=main_menu_kb().as_markup()
     )
 
-# =========================================================
-# INLINE_FEATURES_V1 — СЧЁТЧИК (+1 / -1 / Сброс)
-# =========================================================
-def counter_kb(value: int) -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="➖", callback_data=f"cnt:-1:{value}")
-    kb.button(text="➕", callback_data=f"cnt:+1:{value}")
-    kb.button(text="🔄 Сброс", callback_data="cnt:reset:0")
-    kb.button(text="⬅️ Назад", callback_data="cnt:back:0")
-    kb.adjust(2, 2)
-    return kb
-
-@router.message(Command("counter"))
-async def start_counter(m: Message):
-    start = 0
-    await m.answer(f"Счётчик: {start}", reply_markup=counter_kb(start).as_markup())
-
+# ---------- СЧЁТЧИК ----------
 @router.callback_query(F.data.startswith("cnt:"))
 async def on_counter(cq: CallbackQuery):
     try:
@@ -129,30 +131,102 @@ async def on_counter(cq: CallbackQuery):
     if action == "+1":
         value += 1
         await cq.answer("Плюс один ✅")
-        await cq.message.edit_text(f"Счётчик: {value}", reply_markup=counter_kb(value).as_markup())
     elif action == "-1":
         value -= 1
         await cq.answer("Минус один ✅")
-        await cq.message.edit_text(f"Счётчик: {value}", reply_markup=counter_kb(value).as_markup())
     elif action == "reset":
         value = 0
         await cq.answer("Сброшено")
-        await cq.message.edit_text(f"Счётчик: {value}", reply_markup=counter_kb(value).as_markup())
     elif action == "back":
         await cq.answer()
-        await cq.message.edit_text("Главное меню:", reply_markup=main_menu_kb().as_markup())
+        await cq.message.edit_text(
+            "Главное меню:",
+            reply_markup=main_menu_kb().as_markup()
+        )
+        return
 
-# ---------- Запуск ----------
+    await cq.message.edit_text(
+        f"Счётчик: {value}",
+        reply_markup=counter_kb(value).as_markup()
+    )
+
+# ---------- АДМИН/РАССЫЛКА ----------
+def is_admin(user_id: int) -> bool:
+    try:
+        admin_id = int(os.getenv("ADMIN_ID", "0"))
+    except Exception:
+        admin_id = 0
+    return admin_id and user_id == admin_id
+
+@router.message(Command("users"))
+async def cmd_users(m: Message):
+    if not is_admin(m.from_user.id):
+        await m.answer("Команда только для админа.")
+        return
+    await m.answer(f"Пользователей (в этом процессе): {len(USERS)}")
+
+@router.message(Command("broadcast"))
+async def cmd_broadcast(m: Message):
+    if not is_admin(m.from_user.id):
+        await m.answer("Команда только для админа.")
+        return
+    text = (m.text or "").split(maxsplit=1)
+    if len(text) < 2:
+        await m.answer("Использование: /broadcast текст")
+        return
+    payload = text[1]
+    ok, fail = 0, 0
+    for uid in list(USERS):
+        try:
+            await m.bot.send_message(uid, payload)
+            ok += 1
+        except Exception as e:
+            log.warning("broadcast to %s failed: %s", uid, e)
+            fail += 1
+    await m.answer(f"Разослано: {ok}, ошибок: {fail}")
+
+# ---------- ОБРАТНАЯ СВЯЗЬ ----------
+@router.message(Command("feedback"))
+async def cmd_feedback(m: Message):
+    parts = (m.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await m.answer("Напиши: /feedback твой текст")
+        return
+    admin_raw = os.getenv("ADMIN_ID")
+    if not admin_raw:
+        await m.answer("Админ не настроен.")
+        return
+    try:
+        admin_id = int(admin_raw)
+    except Exception:
+        await m.answer("ADMIN_ID задан некорректно.")
+        return
+
+    txt = parts[1]
+    me = m.from_user
+    header = f"✉️ Сообщение от @{me.username or 'user'} (id {me.id}):"
+    try:
+        await m.bot.send_message(admin_id, f"{header}\n\n{txt}")
+        await m.answer("Отправил администратору. Спасибо!")
+    except Exception as e:
+        log.error("feedback send failed: %s", e)
+        await m.answer("Не удалось отправить администратору.")
+
+# ---------- HTTP-СЕРВЕР ДЛЯ RENDER ----------
+def start_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
+        log.info("HTTP server on :%s", port)
+        httpd.serve_forever()
+
+# ---------- ЗАПУСК ----------
 async def run_bot():
-    load_dotenv()
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_TOKEN is not set")
-
     bot = Bot(token)
     dp = Dispatcher()
     dp.include_router(router)
-    log.info("Polling…")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
