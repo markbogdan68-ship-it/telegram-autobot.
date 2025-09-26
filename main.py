@@ -257,15 +257,32 @@ async def run_bot():
     init_db()  # <-- ДО dp.start_polling(...)
     # dp = Dispatcher(), include_router(...), и т.п.
     await dp.start_polling(bot)
-    async def run_bot():
-    token = os.getenv("TELEGRAM_TOKEN")
-    if not token:
-        raise RuntimeError("TELEGRAM_TOKEN is not set")
-    bot = Bot(token)
-    dp = Dispatcher()
-    dp.include_router(router)
+    import os
+from aiogram import Bot, Dispatcher
+from aiogram.types import Message
+from aiogram.filters import Command
+
+# --- подключаем твои роутеры ---
+from your_router_file import router   # замени на реальное имя файла, если нужно
+
+# токен из переменных окружения Render
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN is not set")
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+dp.include_router(router)
+
+# --- команды ---
+@dp.message(Command("start"))
+async def start_cmd(m: Message):
+    await m.answer("Бот запущен! Используй /menu")
+
+# --- точка входа ---
+async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    threading.Thread(target=start_http_server, daemon=True).start()
-    asyncio.run(run_bot())
+    import asyncio
+    asyncio.run(main())
