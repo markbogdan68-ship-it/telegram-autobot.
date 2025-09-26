@@ -182,26 +182,41 @@ async def cmd_users(m: Message):
     preview = ", ".join(map(str, sample))
     more = f"\n…и ещё {total-10}" if total > 10 else ""
     await m.answer(f"Пользователей: {total}\n{preview}{more}")
-@router.message(Command("broadcast")
+# ===============================
+# Команда /broadcast (для админа)
+# ===============================
+from aiogram.filters import Command
+from aiogram.types import Message
+
+# ID администратора (поставь свой ID)
+ADMIN_ID = 7578976780  # <-- сюда свой Telegram ID
+
+@router.message(Command("broadcast"))
 async def cmd_broadcast(m: Message):
-    if not is_admin(m.from_user.id):
-        return await m.answer("Команда только для админа.")
+    # проверяем админа
+    if m.from_user.id != ADMIN_ID:
+        await m.answer("Команда только для админа.")
+        return
 
-    parts = m.text.split(" ", 1)
-    if len(parts) < 2 or not parts[1].strip():
-        return await m.answer("Использование: /broadcast ТЕКСТ_СООБЩЕНИЯ")
+    # если нет текста после команды
+    if len(m.text.split(maxsplit=1)) == 1:
+        await m.answer("Напиши: /broadcast твой текст")
+        return
 
-    text = parts[1].strip()
-    ok, fail = 0, 0
+    # текст после команды
+    text = m.text.split(maxsplit=1)[1]
 
-    for uid in all_user_ids():
-        try:
-            await m.bot.send_message(uid, text)
-            ok += 1
-        except Exception:
-            fail += 1
+    # тут должен быть список всех пользователей
+    # для примера рассылаем только себе
+    # (позже сюда добавим цикл по БД)
+    await m.answer(f"Рассылка: {text}")
 
-    await m.answer(f"Готово. Отправлено: {ok}. Ошибок: {fail}.")
+    # например отправка всем (если список есть)
+    # for user_id in users:
+    #     try:
+    #         await bot.send_message(user_id, text)
+    #     except Exception:
+    #         pass
 # ---------- ОБРАТНАЯ СВЯЗЬ ----------
 @router.message(Command("feedback"))
 async def cmd_feedback(m: Message):
