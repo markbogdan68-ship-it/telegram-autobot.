@@ -1,49 +1,57 @@
-# db.py
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from models import Base, User  # важно: импортируем и Base, и User
+import os
+import asyncio
+import threading
+import logging
+from http.server import SimpleHTTPRequestHandler
+from socketserver import TCPServer
 
-# SQLite-файл лежит рядом с кодом
-DATABASE_URL = "sqlite:///./db.sqlite3"
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher
 
-# движок (для SQLite включаем check_same_thread=False)
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
-
-# фабрика сессий
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from handlers import router
+from db import init_db
 
 
-def init_db() -> None:
-    """Создать таблицы, если их ещё нет."""
-    Base.metadata.create_all(bind=engine)
+# ---------- Логи ----------
+LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LEVEL, logging.INFO))
+log = logging.getLogger("bot")
 
 
-def add_user(tg_id: int) -> None:
-    """Добавить пользователя, если его ещё нет."""
-    with SessionLocal() as session:
-        exists = session.query(User).filter(User.tg_id == tg_id).first()
-        if not exists:
-            session.add(User(tg_id=tg_id))
-            session.commit()
+# ---------- HTTP для Render ----------
+def start_http_server():
+    port = int(os.environ.get("PORT", 8080))
+
+    class Handler(SimpleHTTPRequestHandler):
+        def log_message(self, *args, **kwargs):
+            # тише в логах
+            pass
+
+    with TCPServer(("", port), Handler) as httpd:
+        log.info(f"HTTP server on 0.0.0.0:{port}")
+        httpd.serve_forever()
 
 
-def count_users() -> int:
-    """Вернуть количество пользователей в таблице users."""
-    with SessionLocal() as session:
-        return session.query(User).count()
+# ---------- Запуск бота ----------
+async def run_bot():
+    load_dotenv()  # подхватываем .env и переменные окружения Render
+    token = os.getenv("TELEGRAM_TOKEN")
+    if not token:
+        raise RuntimeError("TELEGRAM_TOKEN is not set")
+
+    # Инициализируем БД
+    init_db()
+
+    # aiogram v3
+    dp = Dispatcher()
+    dp.include_router(router)
+    bot = Bot(token)
+
+    log.info("Start polling...")
+    await dp.start_polling(bot)
 
 
-def get_sample_users(limit: int = 10):
-    """Вернуть несколько пользователей для примера/тестов."""
-    with SessionLocal() as session:
-        rows = session.query(User).order_by(User.id.desc()).limit(limit).all()
-        return rows
-
-
-def all_user_ids():
-    """Вернуть список всех tg_id (для рассылок)."""
-    with SessionLocal() as session:
-        return [u.tg_id for u in session.query(User.tg_id).all()]
+if __name__ == "__main__":
+    # HTTP в фоне — чтобы Render считал сервис «живым»
+    threading.Thread(target=start_http_server, daemon=True).start()
+    asyncio.run(run_bot())
