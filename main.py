@@ -182,7 +182,7 @@ async def cmd_users(m: Message):
     preview = ", ".join(map(str, sample))
     more = f"\n…и ещё {total-10}" if total > 10 else ""
     await m.answer(f"Пользователей: {total}\n{preview}{more}")
-@router.message(Command("broadcast")))
+@router.message(Command("broadcast")
 async def cmd_broadcast(m: Message):
     if not is_admin(m.from_user.id):
         return await m.answer("Команда только для админа.")
